@@ -2,7 +2,7 @@
 
 **Date Added**: 2026-04-16
 **Priority**: High
-**Status**: Planned
+**Status**: In Progress
 
 ## Problem Statement
 
@@ -25,17 +25,19 @@ The gateway currently listens on plain HTTP. Clients connecting over untrusted n
 
 - Use `http.ListenAndServeTLS(addr, certFile, keyFile, handler)` — no new dependencies.
 - `HTTPS` env var: optional, accepted values `true` / `false` (case-insensitive), default `false`.
-- `HTTPS_CERTIFICATE` env var: path to PEM certificate file, default `/etc/ollama-gateway/cert.pem`.
-- `HTTPS_PRIVATE_KEY` env var: path to PEM private key file, default `/etc/ollama-gateway/key.pem`.
+- `HTTPS_CERTIFICATE` env var: path to PEM certificate file, default `/app/cert.pem`.
+- `HTTPS_PRIVATE_KEY` env var: path to PEM private key file, default `/app/key.pem`.
+- `HTTPS` values other than `true` or `false` (case-insensitive) cause a fatal error before binding.
+- If `HTTPS=true` and either file path does not exist on disk, the process exits with a descriptive error before binding.
 - Only the frontend (client-facing) listener is affected; backend communication with Ollama remains plain HTTP.
 
 ## Acceptance Criteria
 
 - [ ] `HTTPS=false` (or unset): server starts on plain HTTP, existing behaviour unchanged.
 - [ ] `HTTPS=true` with valid cert and key paths: server starts on HTTPS and handles TLS connections.
-- [ ] `HTTPS=true` with missing `HTTPS_CERTIFICATE` path value (no env var set): process exits with a descriptive error before binding.
-- [ ] `HTTPS=true` with missing `HTTPS_PRIVATE_KEY` path value (no env var set): process exits with a descriptive error before binding.
-- [ ] `HTTPS=true` with a non-existent or unreadable cert/key file: `ListenAndServeTLS` returns an error and the process exits non-zero.
+- [ ] `HTTPS` set to a value other than `true`/`false` (case-insensitive): process exits with a descriptive error before binding.
+- [ ] `HTTPS=true` with either cert or key file not found on disk: process exits with a descriptive error before binding.
+- [ ] Default cert path is `/app/cert.pem`; default key path is `/app/key.pem`.
 - [ ] Startup log includes the scheme (`http` or `https`) in the listening message.
 - [ ] README.md documents the three new env vars.
 
@@ -46,4 +48,4 @@ The gateway currently listens on plain HTTP. Clients connecting over untrusted n
 ## Implementation Notes
 
 - Change is confined to `main.go` (env var reading + conditional `ListenAndServeTLS`) and `README.md`.
-- `HTTPS` values other than `true` / `false` (case-insensitive) should be treated as `false` with no error, or exit with an error — to be decided during Plan phase.
+- File existence is checked with `os.Stat` before calling `ListenAndServeTLS`.

@@ -2,7 +2,7 @@
 
 **Date Added**: 2026-04-16
 **Priority**: High
-**Status**: In Progress
+**Status**: Completed
 
 ## Problem Statement
 
@@ -33,13 +33,13 @@ The gateway currently listens on plain HTTP. Clients connecting over untrusted n
 
 ## Acceptance Criteria
 
-- [ ] `HTTPS=false` (or unset): server starts on plain HTTP, existing behaviour unchanged.
-- [ ] `HTTPS=true` with valid cert and key paths: server starts on HTTPS and handles TLS connections.
-- [ ] `HTTPS` set to a value other than `true`/`false` (case-insensitive): process exits with a descriptive error before binding.
-- [ ] `HTTPS=true` with either cert or key file not found on disk: process exits with a descriptive error before binding.
-- [ ] Default cert path is `/app/cert.pem`; default key path is `/app/key.pem`.
-- [ ] Startup log includes the scheme (`http` or `https`) in the listening message.
-- [ ] README.md documents the three new env vars.
+- [x] `HTTPS=false` (or unset): server starts on plain HTTP, existing behaviour unchanged.
+- [x] `HTTPS=true` with valid cert and key paths: server starts on HTTPS and handles TLS connections.
+- [x] `HTTPS` set to a value other than `true`/`false` (case-insensitive): process exits with a descriptive error before binding.
+- [x] `HTTPS=true` with either cert or key file not found on disk: process exits with a descriptive error before binding.
+- [x] Default cert path is `/app/cert.pem`; default key path is `/app/key.pem`.
+- [x] Startup log includes the scheme (`http` or `https`) in the listening message.
+- [x] README.md documents the three new env vars.
 
 ## Dependencies
 

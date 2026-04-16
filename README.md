@@ -49,6 +49,9 @@ Client
 | `OLLAMA_BASE_URL` | Yes | — | Base URL of the Ollama backend (e.g. `http://localhost:11434`) |
 | `API_TOKENS` | Yes | — | Comma-separated list of valid Bearer tokens (e.g. `token-a,token-b`) |
 | `PORT` | No | `8080` | Port the gateway listens on |
+| `HTTPS` | No | `false` | Set to `true` to enable TLS on the client-facing listener. Must be `true` or `false`; any other value is a fatal error. |
+| `HTTPS_CERTIFICATE` | When `HTTPS=true` | `/app/cert.pem` | Path to the PEM certificate file. The file must exist when `HTTPS=true`. |
+| `HTTPS_PRIVATE_KEY` | When `HTTPS=true` | `/app/key.pem` | Path to the PEM private key file. The file must exist when `HTTPS=true`. |
 
 ## Quick Start
 

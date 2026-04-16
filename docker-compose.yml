@@ -1,0 +1,19 @@
+name: ollama-gateway
+
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    environment:
+      - OLLAMA_ORIGINS=*
+    volumes:
+      - ./ollama:/root/.ollama
+
+  ollama-gateway:
+    image: mountainpass/ollama-gateway
+    container_name: ollama-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - API_TOKENS=abcdefghij

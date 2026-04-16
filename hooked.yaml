@@ -1,0 +1,50 @@
+
+env:
+  default:
+    GREETING: Hello
+
+scripts:
+  clean:
+    $cmd: |
+      docker compose down || true
+      docker stop ollama-gateway example-ollama-gateway || true
+      docker rm ollama-gateway example-ollama-gateway || true
+      docker rmi ollama-gateway || true
+      docker rmi mountainpass/ollama-gateway || true
+
+  down:
+    $cmd: docker stop ollama-gateway && docker rm ollama-gateway
+
+  build:
+    $cmd: |
+      docker compose down || true
+      docker stop ollama-gateway || true
+      docker rm ollama-gateway || true
+      docker rmi ollama-gateway || true
+      docker rmi mountainpass/ollama-gateway || true
+      docker build . -t mountainpass/ollama-gateway
+
+  up:
+    $cmd: docker compose up -d
+
+  publish:
+    $cmd: |
+      cd ollama-gateway
+      VERSION=1.`date +%Y%m%d`.`git rev-parse --short=8 HEAD`
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag mountainpass/ollama-gateway:docker-$VERSION \
+        --tag mountainpass/ollama-gateway:latest \
+        --push \
+        .
+
+  ghsetup:
+    $cmd: |
+      gh auth login
+      gh repo set-default
+
+  release:
+    $cmd: |
+      VERSION=1.`date +%Y%m%d`.`git rev-parse --short=8 HEAD`
+      DOCKERHUB_URL=https://hub.docker.com/repository/docker/mountainpass/ollama-gateway/tags/$VERSION/
+      gh release create "$VERSION" --title "$VERSION" --notes "Docker image: $DOCKERHUB_URL"

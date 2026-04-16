@@ -2,7 +2,7 @@
 
 **Requirement**: [2026-04-16-ollama-http-proxy-gateway.md](2026-04-16-ollama-http-proxy-gateway.md)
 **Date**: 2026-04-16
-**Status**: Draft
+**Status**: Implemented
 
 ## Implementation Steps
 
@@ -63,7 +63,15 @@
 
 9. **Add `Makefile`** with targets `build`, `run`, `test`.
 
-10. **Write `main_test.go`** — table-driven integration tests using `httptest`:
+10. **Update `README.md`** — replace placeholder content with:
+    - Project overview and architecture diagram (ASCII).
+    - Prerequisites (`go 1.21+`).
+    - Environment variable reference table.
+    - Quick-start instructions (`go build`, run command, example curl calls).
+    - `/usage` endpoint description with example response.
+    - Development section (`make build`, `make test`).
+
+11. **Write `main_test.go`** — table-driven integration tests using `httptest`:
     - Missing auth → 401.
     - Bad token → 401.
     - Valid token, non-streaming mock backend → 200, usage recorded.
@@ -84,6 +92,7 @@
 | `usage.go` | Create | `/usage` endpoint handler |
 | `main_test.go` | Create | Integration tests via httptest |
 | `Makefile` | Create | `build`, `run`, `test` targets |
+| `README.md` | Modify | Usage docs, env vars, quick-start, `/usage` reference |
 
 ## API Contracts
 
@@ -201,3 +210,10 @@ proxy.ModifyResponse = func(resp *http.Response) error {
 - **Streaming flush**: `httputil.ReverseProxy` buffers by default. Need to ensure the `ResponseWriter` is flushed after each chunk. The proxy's `FlushInterval` field should be set to `-1` (flush immediately) to support streaming.
 - **Token accumulation strategy**: The design records usage only from `done:true` objects. If a client disconnects mid-stream before `done:true` arrives, those tokens are not recorded. This is acceptable for an MVP.
 - **Date boundary**: Requests use `time.Now().UTC()` at response time. A request that starts just before midnight and completes just after will be attributed to the completion date. Acceptable.
+
+## Implementation Notes
+
+- Implemented exactly as planned. No deviations.
+- `Snapshot()` returns value types (`map[string]map[string]UsageStat`) rather than pointer types; tests updated to use the comma-ok map idiom instead of nil checks.
+- `parseURL` helper added to `main.go` to allow test code to reuse URL parsing without importing `net/url` directly in test helpers.
+- 16 tests, all passing with `-race` flag.

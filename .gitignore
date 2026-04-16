@@ -33,3 +33,6 @@ go.work.sum
 
 ollama/
 
+# Build output
+ollama-gateway
+

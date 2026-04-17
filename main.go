@@ -24,6 +24,30 @@ func main() {
 		port = "8080"
 	}
 
+	httpsRaw := strings.ToLower(os.Getenv("HTTPS"))
+	if httpsRaw != "" && httpsRaw != "true" && httpsRaw != "false" {
+		log.Fatalf("HTTPS must be \"true\" or \"false\", got %q", httpsRaw)
+	}
+	httpsEnabled := httpsRaw == "true"
+
+	certFile := os.Getenv("HTTPS_CERTIFICATE")
+	if certFile == "" {
+		certFile = "/app/cert.pem"
+	}
+	keyFile := os.Getenv("HTTPS_PRIVATE_KEY")
+	if keyFile == "" {
+		keyFile = "/app/key.pem"
+	}
+
+	if httpsEnabled {
+		if _, err := os.Stat(certFile); err != nil {
+			log.Fatalf("HTTPS_CERTIFICATE file not found: %v", err)
+		}
+		if _, err := os.Stat(keyFile); err != nil {
+			log.Fatalf("HTTPS_PRIVATE_KEY file not found: %v", err)
+		}
+	}
+
 	target, err := url.Parse(ollamaBaseURL)
 	if err != nil {
 		log.Fatalf("Invalid OLLAMA_BASE_URL %q: %v", ollamaBaseURL, err)
@@ -42,9 +66,16 @@ func main() {
 	mux.Handle("/", authMiddleware(validTokens, proxy))
 
 	addr := ":" + port
-	log.Printf("ollama-gateway listening on %s, proxying to %s", addr, ollamaBaseURL)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("Server error: %v", err)
+	if httpsEnabled {
+		log.Printf("ollama-gateway listening on https://%s, proxying to %s", addr, ollamaBaseURL)
+		if err := http.ListenAndServeTLS(addr, certFile, keyFile, mux); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+	} else {
+		log.Printf("ollama-gateway listening on http://%s, proxying to %s", addr, ollamaBaseURL)
+		if err := http.ListenAndServe(addr, mux); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
 	}
 }
 

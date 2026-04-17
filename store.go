@@ -2,63 +2,80 @@ package main
 
 import "sync"
 
-// UsageStat holds accumulated counters for one (date, token) pair.
+// UsageStat holds accumulated counters for one (date, apikey, model) bucket.
 type UsageStat struct {
-	Requests         int64 `json:"requests"`
-	PromptTokens     int64 `json:"prompt_tokens"`
-	CompletionTokens int64 `json:"completion_tokens"`
-	TotalTokens      int64 `json:"total_tokens"`
+	RequestCount         int64  `json:"request_count"`
+	ResponseCount        int64  `json:"response_count"`
+	LastRequestTimestamp string `json:"last_request_timestamp"`
+	TotalDuration        int64  `json:"total_duration"`
+	LoadDuration         int64  `json:"load_duration"`
+	PromptEvalCount      int64  `json:"prompt_eval_count"`
+	PromptEvalDuration   int64  `json:"prompt_eval_duration"`
+	EvalCount            int64  `json:"eval_count"`
+	EvalDuration         int64  `json:"eval_duration"`
 }
 
-// UsageStore is a thread-safe in-memory store keyed by ISO date then API token.
+// UsageStore is a thread-safe in-memory store keyed by ISO date, API key, then model.
 type UsageStore struct {
 	mu   sync.Mutex
-	data map[string]map[string]*UsageStat // [isodate][token]
+	data map[string]map[string]map[string]*UsageStat // [isodate][apikey][model]
 }
 
 func newUsageStore() *UsageStore {
-	return &UsageStore{data: make(map[string]map[string]*UsageStat)}
+	return &UsageStore{data: make(map[string]map[string]map[string]*UsageStat)}
 }
 
-// RecordRequest increments the request counter for the given date and token.
-func (s *UsageStore) RecordRequest(date, token string) {
+// RecordRequest increments request_count and updates last_request_timestamp.
+func (s *UsageStore) RecordRequest(date, token, model, timestamp string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.getOrCreate(date, token).Requests++
+	st := s.getOrCreate(date, token, model)
+	st.RequestCount++
+	st.LastRequestTimestamp = timestamp
 }
 
-// RecordUsage adds prompt and completion token counts for the given date and token.
-func (s *UsageStore) RecordUsage(date, token string, prompt, completion int64) {
+// RecordResponse increments response_count and accumulates all timing/token fields.
+func (s *UsageStore) RecordResponse(date, token, model string, u ollamaUsage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.getOrCreate(date, token)
-	st.PromptTokens += prompt
-	st.CompletionTokens += completion
-	st.TotalTokens += prompt + completion
+	st := s.getOrCreate(date, token, model)
+	st.ResponseCount++
+	st.TotalDuration += u.TotalDuration
+	st.LoadDuration += u.LoadDuration
+	st.PromptEvalCount += u.PromptEvalCount
+	st.PromptEvalDuration += u.PromptEvalDuration
+	st.EvalCount += u.EvalCount
+	st.EvalDuration += u.EvalDuration
 }
 
 // Snapshot returns a deep copy of the store contents safe for JSON marshalling.
-func (s *UsageStore) Snapshot() map[string]map[string]UsageStat {
+func (s *UsageStore) Snapshot() map[string]map[string]map[string]UsageStat {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make(map[string]map[string]UsageStat, len(s.data))
-	for date, tokens := range s.data {
-		out[date] = make(map[string]UsageStat, len(tokens))
-		for token, st := range tokens {
-			out[date][token] = *st
+	out := make(map[string]map[string]map[string]UsageStat, len(s.data))
+	for date, keys := range s.data {
+		out[date] = make(map[string]map[string]UsageStat, len(keys))
+		for token, models := range keys {
+			out[date][token] = make(map[string]UsageStat, len(models))
+			for model, st := range models {
+				out[date][token][model] = *st
+			}
 		}
 	}
 	return out
 }
 
-// getOrCreate returns the UsageStat pointer for (date, token), creating it if needed.
+// getOrCreate returns the UsageStat pointer for (date, token, model), creating entries as needed.
 // Caller must hold s.mu.
-func (s *UsageStore) getOrCreate(date, token string) *UsageStat {
+func (s *UsageStore) getOrCreate(date, token, model string) *UsageStat {
 	if s.data[date] == nil {
-		s.data[date] = make(map[string]*UsageStat)
+		s.data[date] = make(map[string]map[string]*UsageStat)
 	}
 	if s.data[date][token] == nil {
-		s.data[date][token] = &UsageStat{}
+		s.data[date][token] = make(map[string]*UsageStat)
 	}
-	return s.data[date][token]
+	if s.data[date][token][model] == nil {
+		s.data[date][token][model] = &UsageStat{}
+	}
+	return s.data[date][token][model]
 }

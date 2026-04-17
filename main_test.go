@@ -68,43 +68,145 @@ func TestAuthMiddleware_TokenInContext(t *testing.T) {
 
 // --- Usage store tests ---
 
-func TestStore_RecordRequestAndUsage(t *testing.T) {
+func TestStore_RecordRequestAndResponse(t *testing.T) {
 	s := newUsageStore()
-	s.RecordRequest("2026-04-16", "tok")
-	s.RecordRequest("2026-04-16", "tok")
-	s.RecordUsage("2026-04-16", "tok", 10, 20)
+	s.RecordRequest("2026-04-16", "tok", "modelA", "2026-04-16T00:00:00Z")
+	s.RecordRequest("2026-04-16", "tok", "modelA", "2026-04-16T00:01:00Z")
+	s.RecordResponse("2026-04-16", "tok", "modelA", ollamaUsage{
+		PromptEvalCount: 10,
+		EvalCount:       20,
+		TotalDuration:   100,
+	})
 
 	snap := s.Snapshot()
-	st := snap["2026-04-16"]["tok"]
-	if st.Requests != 2 {
-		t.Errorf("requests: want 2, got %d", st.Requests)
+	st := snap["2026-04-16"]["tok"]["modelA"]
+	if st.RequestCount != 2 {
+		t.Errorf("request_count: want 2, got %d", st.RequestCount)
 	}
-	if st.PromptTokens != 10 {
-		t.Errorf("prompt_tokens: want 10, got %d", st.PromptTokens)
+	if st.ResponseCount != 1 {
+		t.Errorf("response_count: want 1, got %d", st.ResponseCount)
 	}
-	if st.CompletionTokens != 20 {
-		t.Errorf("completion_tokens: want 20, got %d", st.CompletionTokens)
+	if st.PromptEvalCount != 10 {
+		t.Errorf("prompt_eval_count: want 10, got %d", st.PromptEvalCount)
 	}
-	if st.TotalTokens != 30 {
-		t.Errorf("total_tokens: want 30, got %d", st.TotalTokens)
+	if st.EvalCount != 20 {
+		t.Errorf("eval_count: want 20, got %d", st.EvalCount)
+	}
+	if st.TotalDuration != 100 {
+		t.Errorf("total_duration: want 100, got %d", st.TotalDuration)
+	}
+	if st.LastRequestTimestamp != "2026-04-16T00:01:00Z" {
+		t.Errorf("last_request_timestamp: want %q, got %q", "2026-04-16T00:01:00Z", st.LastRequestTimestamp)
 	}
 }
 
 func TestStore_MultipleTokensAndDates(t *testing.T) {
 	s := newUsageStore()
-	s.RecordRequest("2026-04-16", "tok-a")
-	s.RecordRequest("2026-04-17", "tok-b")
-	s.RecordUsage("2026-04-16", "tok-a", 5, 15)
+	s.RecordRequest("2026-04-16", "tok-a", "m1", "2026-04-16T00:00:00Z")
+	s.RecordRequest("2026-04-17", "tok-b", "m1", "2026-04-17T00:00:00Z")
+	s.RecordResponse("2026-04-16", "tok-a", "m1", ollamaUsage{PromptEvalCount: 5, EvalCount: 15})
 
 	snap := s.Snapshot()
 	if len(snap) != 2 {
 		t.Fatalf("expected 2 dates, got %d", len(snap))
 	}
-	if snap["2026-04-16"]["tok-a"].TotalTokens != 20 {
-		t.Error("wrong total for tok-a on 2026-04-16")
+	st := snap["2026-04-16"]["tok-a"]["m1"]
+	if st.PromptEvalCount+st.EvalCount != 20 {
+		t.Error("wrong total eval count for tok-a on 2026-04-16")
 	}
-	if snap["2026-04-17"]["tok-b"].Requests != 1 {
-		t.Error("wrong requests for tok-b on 2026-04-17")
+	if snap["2026-04-17"]["tok-b"]["m1"].RequestCount != 1 {
+		t.Error("wrong request_count for tok-b on 2026-04-17")
+	}
+}
+
+func TestStore_MultiModelBucketing(t *testing.T) {
+	s := newUsageStore()
+	s.RecordRequest("2026-04-17", "tok", "model-a", "2026-04-17T00:00:00Z")
+	s.RecordRequest("2026-04-17", "tok", "model-b", "2026-04-17T00:00:01Z")
+	s.RecordResponse("2026-04-17", "tok", "model-a", ollamaUsage{EvalCount: 10})
+	s.RecordResponse("2026-04-17", "tok", "model-b", ollamaUsage{EvalCount: 20})
+
+	snap := s.Snapshot()
+	models := snap["2026-04-17"]["tok"]
+	if len(models) != 2 {
+		t.Fatalf("expected 2 model buckets, got %d", len(models))
+	}
+	if models["model-a"].EvalCount != 10 {
+		t.Errorf("model-a eval_count: want 10, got %d", models["model-a"].EvalCount)
+	}
+	if models["model-b"].EvalCount != 20 {
+		t.Errorf("model-b eval_count: want 20, got %d", models["model-b"].EvalCount)
+	}
+}
+
+func TestStore_ResponseCountVsRequestCount(t *testing.T) {
+	s := newUsageStore()
+	s.RecordRequest("2026-04-17", "tok", "m", "2026-04-17T00:00:00Z")
+	s.RecordRequest("2026-04-17", "tok", "m", "2026-04-17T00:00:01Z")
+	s.RecordRequest("2026-04-17", "tok", "m", "2026-04-17T00:00:02Z")
+	s.RecordResponse("2026-04-17", "tok", "m", ollamaUsage{EvalCount: 5})
+	s.RecordResponse("2026-04-17", "tok", "m", ollamaUsage{EvalCount: 5})
+
+	snap := s.Snapshot()
+	st := snap["2026-04-17"]["tok"]["m"]
+	if st.RequestCount != 3 {
+		t.Errorf("request_count: want 3, got %d", st.RequestCount)
+	}
+	if st.ResponseCount != 2 {
+		t.Errorf("response_count: want 2, got %d", st.ResponseCount)
+	}
+}
+
+func TestStore_LastRequestTimestampUpdated(t *testing.T) {
+	s := newUsageStore()
+	s.RecordRequest("2026-04-17", "tok", "m", "2026-04-17T00:00:00Z")
+	s.RecordRequest("2026-04-17", "tok", "m", "2026-04-17T12:00:00Z")
+
+	snap := s.Snapshot()
+	ts := snap["2026-04-17"]["tok"]["m"].LastRequestTimestamp
+	if ts != "2026-04-17T12:00:00Z" {
+		t.Errorf("last_request_timestamp: want %q, got %q", "2026-04-17T12:00:00Z", ts)
+	}
+}
+
+func TestStore_TimingFieldsAccumulated(t *testing.T) {
+	s := newUsageStore()
+	s.RecordResponse("2026-04-17", "tok", "m", ollamaUsage{
+		TotalDuration:      1000,
+		LoadDuration:       200,
+		PromptEvalCount:    10,
+		PromptEvalDuration: 50,
+		EvalCount:          100,
+		EvalDuration:       750,
+	})
+	s.RecordResponse("2026-04-17", "tok", "m", ollamaUsage{
+		TotalDuration:      2000,
+		LoadDuration:       400,
+		PromptEvalCount:    20,
+		PromptEvalDuration: 100,
+		EvalCount:          200,
+		EvalDuration:       1500,
+	})
+
+	snap := s.Snapshot()
+	st := snap["2026-04-17"]["tok"]["m"]
+	if st.TotalDuration != 3000 {
+		t.Errorf("total_duration: want 3000, got %d", st.TotalDuration)
+	}
+	if st.LoadDuration != 600 {
+		t.Errorf("load_duration: want 600, got %d", st.LoadDuration)
+	}
+	if st.PromptEvalCount != 30 {
+		t.Errorf("prompt_eval_count: want 30, got %d", st.PromptEvalCount)
+	}
+	if st.PromptEvalDuration != 150 {
+		t.Errorf("prompt_eval_duration: want 150, got %d", st.PromptEvalDuration)
+	}
+	if st.EvalCount != 300 {
+		t.Errorf("eval_count: want 300, got %d", st.EvalCount)
+	}
+	if st.EvalDuration != 2250 {
+		t.Errorf("eval_duration: want 2250, got %d", st.EvalDuration)
 	}
 }
 
@@ -113,23 +215,24 @@ func TestStore_MultipleTokensAndDates(t *testing.T) {
 func TestInspectingReader_NonStreamingUsage(t *testing.T) {
 	s := newUsageStore()
 	body := `{"model":"llama3","response":"Hi","prompt_eval_count":7,"eval_count":13}`
-	r := newInspectingReader(io.NopCloser(strings.NewReader(body)), s, "tok")
+	r := newInspectingReader(io.NopCloser(strings.NewReader(body)), s, "tok", "llama3")
 
-	// Read entire body (simulates proxy reading and forwarding).
 	io.ReadAll(r)
 	r.Close()
 
 	snap := s.Snapshot()
-	for _, tokens := range snap {
-		st, ok := tokens["tok"]
-		if !ok {
-			continue
+	for _, keys := range snap {
+		for _, models := range keys {
+			st, ok := models["llama3"]
+			if !ok {
+				continue
+			}
+			if st.PromptEvalCount != 7 || st.EvalCount != 13 {
+				t.Errorf("want prompt=7 eval=13, got prompt=%d eval=%d",
+					st.PromptEvalCount, st.EvalCount)
+			}
+			return
 		}
-		if st.PromptTokens != 7 || st.CompletionTokens != 13 {
-			t.Errorf("want prompt=7 completion=13, got prompt=%d completion=%d",
-				st.PromptTokens, st.CompletionTokens)
-		}
-		return
 	}
 	t.Error("no usage recorded")
 }
@@ -142,41 +245,44 @@ func TestInspectingReader_StreamingUsageCapturedFromDoneTrue(t *testing.T) {
 		`{"done":true,"response":"","prompt_eval_count":10,"eval_count":25}`,
 		"",
 	}, "\n")
-	r := newInspectingReader(io.NopCloser(strings.NewReader(ndjson)), s, "tok")
+	r := newInspectingReader(io.NopCloser(strings.NewReader(ndjson)), s, "tok", "llama3")
 	io.ReadAll(r)
 	r.Close()
 
 	snap := s.Snapshot()
-	for _, tokens := range snap {
-		st, ok := tokens["tok"]
-		if !ok {
-			continue
+	for _, keys := range snap {
+		for _, models := range keys {
+			st, ok := models["llama3"]
+			if !ok {
+				continue
+			}
+			if st.PromptEvalCount != 10 || st.EvalCount != 25 {
+				t.Errorf("want prompt=10 eval=25, got prompt=%d eval=%d",
+					st.PromptEvalCount, st.EvalCount)
+			}
+			return
 		}
-		if st.PromptTokens != 10 || st.CompletionTokens != 25 {
-			t.Errorf("want prompt=10 completion=25, got prompt=%d completion=%d",
-				st.PromptTokens, st.CompletionTokens)
-		}
-		return
 	}
 	t.Error("no usage recorded")
 }
 
 func TestInspectingReader_DoneFalseNotRecorded(t *testing.T) {
 	s := newUsageStore()
-	// All chunks have done:false — nothing should be recorded.
 	ndjson := strings.Join([]string{
 		`{"done":false,"prompt_eval_count":5,"eval_count":10}`,
 		`{"done":false,"prompt_eval_count":5,"eval_count":10}`,
 		"",
 	}, "\n")
-	r := newInspectingReader(io.NopCloser(strings.NewReader(ndjson)), s, "tok")
+	r := newInspectingReader(io.NopCloser(strings.NewReader(ndjson)), s, "tok", "m")
 	io.ReadAll(r)
 	r.Close()
 
 	snap := s.Snapshot()
-	for _, tokens := range snap {
-		if st, ok := tokens["tok"]; ok && st.TotalTokens > 0 {
-			t.Errorf("expected no token usage recorded, got %+v", st)
+	for _, keys := range snap {
+		for _, models := range keys {
+			if st, ok := models["m"]; ok && st.EvalCount > 0 {
+				t.Errorf("expected no usage recorded, got %+v", st)
+			}
 		}
 	}
 }
@@ -184,7 +290,7 @@ func TestInspectingReader_DoneFalseNotRecorded(t *testing.T) {
 func TestInspectingReader_PassesBytesThrough(t *testing.T) {
 	s := newUsageStore()
 	original := `{"done":true,"prompt_eval_count":1,"eval_count":2}` + "\n"
-	r := newInspectingReader(io.NopCloser(strings.NewReader(original)), s, "tok")
+	r := newInspectingReader(io.NopCloser(strings.NewReader(original)), s, "tok", "m")
 	got, _ := io.ReadAll(r)
 	r.Close()
 	if string(got) != original {
@@ -192,11 +298,46 @@ func TestInspectingReader_PassesBytesThrough(t *testing.T) {
 	}
 }
 
+func TestInspectingReader_ModelRouting(t *testing.T) {
+	s := newUsageStore()
+
+	bodyA := `{"done":true,"prompt_eval_count":5,"eval_count":10}` + "\n"
+	rA := newInspectingReader(io.NopCloser(strings.NewReader(bodyA)), s, "tok", "model-a")
+	io.ReadAll(rA)
+	rA.Close()
+
+	bodyB := `{"done":true,"prompt_eval_count":3,"eval_count":7}` + "\n"
+	rB := newInspectingReader(io.NopCloser(strings.NewReader(bodyB)), s, "tok", "model-b")
+	io.ReadAll(rB)
+	rB.Close()
+
+	snap := s.Snapshot()
+	var found int
+	for _, keys := range snap {
+		for _, models := range keys {
+			if st, ok := models["model-a"]; ok {
+				found++
+				if st.ResponseCount != 1 || st.EvalCount != 10 {
+					t.Errorf("model-a: want response_count=1 eval=10, got %+v", st)
+				}
+			}
+			if st, ok := models["model-b"]; ok {
+				found++
+				if st.ResponseCount != 1 || st.EvalCount != 7 {
+					t.Errorf("model-b: want response_count=1 eval=7, got %+v", st)
+				}
+			}
+		}
+	}
+	if found != 2 {
+		t.Errorf("expected 2 model buckets recorded, found %d", found)
+	}
+}
+
 // --- Proxy + usage endpoint integration ---
 
 func TestProxyIntegration_NonStreamingUsageCaptured(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify Authorization header was stripped.
 		if r.Header.Get("Authorization") != "" {
 			t.Error("Authorization header should be stripped before forwarding")
 		}
@@ -206,30 +347,52 @@ func TestProxyIntegration_NonStreamingUsageCaptured(t *testing.T) {
 
 	store, proxy, mux := buildTestServer(t, backend.URL)
 
-	// Make a proxied request.
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{}`))
+	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"test-model"}`))
 	req.Header.Set("Authorization", "Bearer good-token")
 	mux.ServeHTTP(rec, req)
 	assertStatus(t, rec, http.StatusOK)
 
-	// Drain body to ensure inspectingReader.Close is called.
 	io.ReadAll(rec.Body)
 
-	// Check usage.
 	snap := store.Snapshot()
-	for _, tokens := range snap {
-		st, ok := tokens["good-token"]
-		if !ok {
-			continue
+	for _, keys := range snap {
+		if models, ok := keys["good-token"]; ok {
+			for _, st := range models {
+				if st.RequestCount >= 1 {
+					_ = proxy
+					return
+				}
+			}
 		}
-		if st.Requests < 1 {
-			t.Errorf("expected at least 1 request, got %d", st.Requests)
-		}
-		_ = proxy
-		return
 	}
 	t.Error("no usage recorded after proxied request")
+}
+
+func TestProxyIntegration_ModelExtracted(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, `{"done":true,"prompt_eval_count":1,"eval_count":2}`)
+	}))
+	defer backend.Close()
+
+	store, _, mux := buildTestServer(t, backend.URL)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"test-model"}`))
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusOK)
+	io.ReadAll(rec.Body)
+
+	snap := store.Snapshot()
+	for _, keys := range snap {
+		if models, ok := keys["good-token"]; ok {
+			if _, ok := models["test-model"]; ok {
+				return
+			}
+		}
+	}
+	t.Error("expected 'test-model' bucket in snapshot")
 }
 
 func TestUsageEndpoint_Unauthorized(t *testing.T) {
@@ -252,9 +415,8 @@ func TestUsageEndpoint_ReturnsJSON(t *testing.T) {
 
 	store, _, mux := buildTestServer(t, backend.URL)
 
-	// Seed some usage directly so we don't depend on body parsing timing.
-	store.RecordRequest("2026-04-16", "good-token")
-	store.RecordUsage("2026-04-16", "good-token", 3, 7)
+	store.RecordRequest("2026-04-16", "good-token", "llama3", "2026-04-16T00:00:00Z")
+	store.RecordResponse("2026-04-16", "good-token", "llama3", ollamaUsage{PromptEvalCount: 3, EvalCount: 7})
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/usage", nil)
@@ -266,7 +428,7 @@ func TestUsageEndpoint_ReturnsJSON(t *testing.T) {
 		t.Errorf("Content-Type: want application/json, got %q", ct)
 	}
 
-	var body map[string]map[string]map[string]UsageStat
+	var body map[string]map[string]map[string]map[string]UsageStat
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode /usage response: %v", err)
 	}
@@ -278,11 +440,15 @@ func TestUsageEndpoint_ReturnsJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("response missing date key '2026-04-16'")
 	}
-	st, ok := dateEntry["good-token"]
+	tokenEntry, ok := dateEntry["good-token"]
 	if !ok {
 		t.Fatal("response missing token key 'good-token'")
 	}
-	if st.Requests != 1 || st.PromptTokens != 3 || st.CompletionTokens != 7 || st.TotalTokens != 10 {
+	st, ok := tokenEntry["llama3"]
+	if !ok {
+		t.Fatal("response missing model key 'llama3'")
+	}
+	if st.RequestCount != 1 || st.PromptEvalCount != 3 || st.EvalCount != 7 || st.ResponseCount != 1 {
 		t.Errorf("unexpected stat: %+v", st)
 	}
 }
@@ -304,9 +470,11 @@ func TestRequestCounter_IncrementedPerRequest(t *testing.T) {
 
 	snap := store.Snapshot()
 	var totalRequests int64
-	for _, tokens := range snap {
-		if st, ok := tokens["good-token"]; ok {
-			totalRequests += st.Requests
+	for _, keys := range snap {
+		for _, models := range keys {
+			for _, st := range models {
+				totalRequests += st.RequestCount
+			}
 		}
 	}
 	if totalRequests != 3 {

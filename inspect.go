@@ -9,9 +9,13 @@ import (
 
 // ollamaUsage is the minimal shape we look for in every JSON object from Ollama.
 type ollamaUsage struct {
-	Done            *bool `json:"done"` // pointer so we can detect absence
-	PromptEvalCount int64 `json:"prompt_eval_count"`
-	EvalCount       int64 `json:"eval_count"`
+	Done               *bool `json:"done"` // pointer so we can detect absence
+	TotalDuration      int64 `json:"total_duration"`
+	LoadDuration       int64 `json:"load_duration"`
+	PromptEvalCount    int64 `json:"prompt_eval_count"`
+	PromptEvalDuration int64 `json:"prompt_eval_duration"`
+	EvalCount          int64 `json:"eval_count"`
+	EvalDuration       int64 `json:"eval_duration"`
 }
 
 // inspectingReader wraps an Ollama response body.  It passes bytes through to
@@ -23,14 +27,16 @@ type inspectingReader struct {
 	store *UsageStore
 	date  string
 	token string
+	model string
 }
 
-func newInspectingReader(body io.ReadCloser, store *UsageStore, token string) *inspectingReader {
+func newInspectingReader(body io.ReadCloser, store *UsageStore, token, model string) *inspectingReader {
 	return &inspectingReader{
 		body:  body,
 		store: store,
 		date:  time.Now().UTC().Format("2006-01-02"),
 		token: token,
+		model: model,
 	}
 }
 
@@ -88,6 +94,6 @@ func (r *inspectingReader) tryRecord(data []byte) {
 	}
 
 	if shouldRecord {
-		r.store.RecordUsage(r.date, r.token, u.PromptEvalCount, u.EvalCount)
+		r.store.RecordResponse(r.date, r.token, r.model, u)
 	}
 }

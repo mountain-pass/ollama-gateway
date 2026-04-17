@@ -9,11 +9,38 @@ services:
     volumes:
       - ./ollama:/root/.ollama
 
+  generate-self-signed-certs:
+    image: alpine
+    container_name: generate-self-signed-certs
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache openssl &&
+        mkdir -p /certs &&
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout /certs/privkey.pem \
+          -out /certs/fullchain.pem \
+          -subj '/C=AU/ST=Local/L=Local/O=Dev/OU=Dev/CN=localhost'
+    volumes:
+      - ./certs:/certs
+
   ollama-gateway:
+    depends_on:
+      ollama:
+        condition: service_started
+      generate-self-signed-certs:
+        condition: service_completed_successfully
     image: mountainpass/ollama-gateway
     container_name: ollama-gateway
     ports:
       - "8080:8080"
+    volumes:
+      - ./certs/privkey.pem:/app/key.pem:ro
+      - ./certs/fullchain.pem:/app/cert.pem:ro
     environment:
+      - HTTPS=true
+      - HTTPS_CERTIFICATE=/app/cert.pem
+      - HTTPS_PRIVATE_KEY=/app/key.pem
       - OLLAMA_BASE_URL=http://ollama:11434
       - API_TOKENS=abcdefghij

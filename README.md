@@ -136,6 +136,27 @@ Ollama responses include token counts in JSON fields `prompt_eval_count` and `ev
 
 The request counter is incremented unconditionally for every proxied request, regardless of whether the response contains usage fields.
 
+## Invoking the endpoint
+
+You will need to provide an API key to access the gateway. Here are some sample curl commands:
+
+```
+# fetch usage
+curl -ks https://localhost:8080/usage \
+  -H "Authorization: Bearer abcdefghij" \
+  -H "Content-Type: application/json" | jq
+
+# perform a request
+curl -ks https://localhost:8080/api/generate \
+  -H "Authorization: Bearer abcdefghij" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.5:0.8b",
+    "prompt": "What is 1 + 4?",
+    "stream": false
+  }'
+```
+
 ## Development
 
 ```bash

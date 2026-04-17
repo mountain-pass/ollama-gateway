@@ -136,6 +136,8 @@ Ollama responses include token counts in JSON fields `prompt_eval_count` and `ev
 
 The request counter is incremented unconditionally for every proxied request, regardless of whether the response contains usage fields.
 
+More details here - [https://docs.ollama.com/api/usage](https://docs.ollama.com/api/usage)
+
 ## Invoking the endpoint
 
 You will need to provide an API key to access the gateway. Here are some sample curl commands:

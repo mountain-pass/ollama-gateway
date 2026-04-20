@@ -2,7 +2,7 @@
 
 **Requirement**: [2026-04-20-dockerfile-client-image.md](2026-04-20-dockerfile-client-image.md)
 **Date**: 2026-04-20
-**Status**: Draft
+**Status**: Implemented
 
 ## Implementation Steps
 
@@ -54,8 +54,8 @@ if [ -z "$APIKEY" ]; then
   exit 1
 fi
 
-# Extract hostname (without protocol or path) for the Host header
-TARGET_HOST=$(echo "$TARGET" | sed 's|^https\?://||' | sed 's|/.*||')
+# Extract bare hostname (no protocol, port, or path) for the Host header
+TARGET_HOST=$(echo "$TARGET" | sed 's|^https\?://||' | sed 's|/.*||' | sed 's|:.*||')
 
 cat > /etc/nginx/nginx.conf <<EOF
 events {}
@@ -98,6 +98,6 @@ ENTRYPOINT ["/docker-entrypoint-client.sh"]
 
 ## Risks & Open Questions
 
-- The `HOST` header value: the existing `docker-compose.client.yml` sets `Host` to the bare IP (no port). The plan strips protocol and path but keeps host+port (e.g. `202.137.172.189:11434`). This matches what nginx would normally derive and avoids issues with non-standard ports. If the target server requires just the hostname, users can adjust.
+- The `Host` header value: matches the existing `docker-compose.client.yml` — bare hostname/IP only (no port). Protocol, port, and path are all stripped. The port lives in the `proxy_pass` URL, not the header.
 - `proxy_ssl_verify off` is intentional to match existing behaviour (self-signed certs on the gateway).
 - No `.dockerignore` changes needed — the entrypoint script is small and safe to copy.

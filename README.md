@@ -159,6 +159,38 @@ curl -ks https://localhost:8080/api/generate \
   }'
 ```
 
+## Client Image
+
+`mountainpass/ollama-gateway-client` is a lightweight nginx-based Docker image that acts as a local proxy to a remote ollama-gateway server. It automatically injects the required API key on every request, so local tools (e.g. Ollama clients, Open WebUI) can talk to the gateway without needing to know about authentication.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `TARGET` | Yes | URL of the remote ollama-gateway server (e.g. `https://202.111.222.123:11434`) |
+| `APIKEY` | Yes | Bearer token to authenticate with the gateway |
+
+The container exits immediately with a descriptive error message if either variable is missing.
+
+### Usage
+
+```bash
+docker run -d \
+  -e TARGET=https://202.111.222.123:11434 \
+  -e APIKEY=my-secret-token \
+  -p 11434:11434 \
+  --name ollama-gateway-client \
+  mountainpass/ollama-gateway-client
+```
+
+Once running, any Ollama-compatible client pointed at `http://localhost:11434` will have its requests transparently proxied and authenticated.
+
+### Build
+
+```bash
+docker build -f Dockerfile.client -t mountainpass/ollama-gateway-client .
+```
+
 ## Development
 
 ```bash

@@ -1,0 +1,43 @@
+
+env:
+  default:
+    IMAGE: ollama-gateway-client
+
+scripts:
+  clean:
+    $cmd: |
+      docker compose down || true
+      docker stop ${IMAGE} || true
+      docker rm ${IMAGE} || true
+      docker rmi ${IMAGE} || true
+      docker rmi mountainpass/${IMAGE} || true
+
+  down:
+    $cmd: docker stop ${IMAGE} && docker rm ${IMAGE}
+
+  build:
+    $cmd: |
+      docker compose down || true
+      docker stop ${IMAGE} || true
+      docker rm ${IMAGE} || true
+      docker rmi ${IMAGE} || true
+      docker rmi mountainpass/${IMAGE} || true
+      docker build . -t mountainpass/${IMAGE}
+
+  up:
+    $cmd: docker compose up -d
+
+  publish:
+    $cmd: |
+      VERSION=1.`date +%Y%m%d`.`git rev-parse --short=8 HEAD`
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --tag mountainpass/${IMAGE}:$VERSION \
+        --tag mountainpass/${IMAGE}:latest \
+        --push \
+        .
+
+  ghsetup:
+    $cmd: |
+      gh auth login
+      gh repo set-default

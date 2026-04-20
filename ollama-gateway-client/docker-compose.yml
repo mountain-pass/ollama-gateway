@@ -1,0 +1,11 @@
+name: ollama-gateway-client
+
+services:
+  ollama-gateway-client:
+    image: mountainpass/ollama-gateway-client
+    container_name: ollama-gateway-client
+    ports:
+      - "11434:11434"
+    environment:
+      - TARGET=https://202.137.172.189:11434
+      - APIKEY=nick

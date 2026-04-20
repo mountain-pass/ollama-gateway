@@ -53,17 +53,19 @@ func newReverseProxy(target *url.URL, store *UsageStore) *httputil.ReverseProxy 
 		baseDirector(req)
 		// Strip auth header — Ollama does not require it.
 		req.Header.Del("Authorization")
+
+		// Count the request here so it is recorded even if Ollama never responds.
+		token, _ := req.Context().Value(ctxKeyToken).(string)
+		now := time.Now().UTC()
+		store.RecordRequest(now.Format("2006-01-02"), token, model, now.Format(time.RFC3339))
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.Request.URL.Path == "/usage" {
+			return nil
+		}
 		token, _ := resp.Request.Context().Value(ctxKeyToken).(string)
 		model, _ := resp.Request.Context().Value(ctxKeyModel).(string)
-		now := time.Now().UTC()
-		date := now.Format("2006-01-02")
-		ts := now.Format(time.RFC3339)
-
-		store.RecordRequest(date, token, model, ts)
-
 		// Wrap the body so usage fields are captured as the response streams.
 		resp.Body = newInspectingReader(resp.Body, store, token, model)
 		return nil

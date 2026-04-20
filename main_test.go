@@ -482,6 +482,69 @@ func TestRequestCounter_IncrementedPerRequest(t *testing.T) {
 	}
 }
 
+func TestStore_TotalTokensAccumulated(t *testing.T) {
+	s := newUsageStore()
+	s.RecordResponse("2026-04-20", "tok", "m", ollamaUsage{PromptEvalCount: 10, EvalCount: 5})
+	s.RecordResponse("2026-04-20", "tok", "m", ollamaUsage{PromptEvalCount: 10, EvalCount: 5})
+
+	snap := s.Snapshot()
+	st := snap["2026-04-20"]["tok"]["m"]
+	if st.TotalTokens != 30 {
+		t.Errorf("total_tokens: want 30, got %d", st.TotalTokens)
+	}
+}
+
+func TestProxyIntegration_RequestCountOnBackendError(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "backend error", http.StatusInternalServerError)
+	}))
+	defer backend.Close()
+
+	store, _, mux := buildTestServer(t, backend.URL)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+
+	snap := store.Snapshot()
+	var total int64
+	for _, keys := range snap {
+		for _, models := range keys {
+			for _, st := range models {
+				total += st.RequestCount
+			}
+		}
+	}
+	if total < 1 {
+		t.Errorf("expected request_count >= 1 even on backend error, got %d", total)
+	}
+}
+
+func TestProxyIntegration_UsagePathNotCounted(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer backend.Close()
+
+	store, _, mux := buildTestServer(t, backend.URL)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusOK)
+
+	snap := store.Snapshot()
+	for _, keys := range snap {
+		for _, models := range keys {
+			for _, st := range models {
+				if st.RequestCount > 0 || st.ResponseCount > 0 {
+					t.Errorf("expected no metrics for /usage request, got %+v", st)
+				}
+			}
+		}
+	}
+}
+
 // --- Helpers ---
 
 func buildTestServer(t *testing.T, backendURL string) (*UsageStore, http.Handler, *http.ServeMux) {

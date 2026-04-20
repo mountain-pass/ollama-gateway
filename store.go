@@ -13,6 +13,7 @@ type UsageStat struct {
 	PromptEvalDuration   int64  `json:"prompt_eval_duration"`
 	EvalCount            int64  `json:"eval_count"`
 	EvalDuration         int64  `json:"eval_duration"`
+	TotalTokens          int64  `json:"total_tokens"`
 }
 
 // UsageStore is a thread-safe in-memory store keyed by ISO date, API key, then model.
@@ -46,6 +47,7 @@ func (s *UsageStore) RecordResponse(date, token, model string, u ollamaUsage) {
 	st.PromptEvalDuration += u.PromptEvalDuration
 	st.EvalCount += u.EvalCount
 	st.EvalDuration += u.EvalDuration
+	st.TotalTokens += u.PromptEvalCount + u.EvalCount
 }
 
 // Snapshot returns a deep copy of the store contents safe for JSON marshalling.

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -61,7 +62,7 @@ func newReverseProxy(target *url.URL, store *UsageStore) *httputil.ReverseProxy 
 	}
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
-		if resp.Request.URL.Path == "/usage" {
+		if strings.HasPrefix(resp.Request.URL.Path, "/usage") {
 			return nil
 		}
 		token, _ := resp.Request.Context().Value(ctxKeyToken).(string)

@@ -60,7 +60,9 @@ func main() {
 	mux := http.NewServeMux()
 
 	// /usage is reserved — served by this proxy, not forwarded to Ollama.
-	mux.Handle("/usage", authMiddleware(validTokens, usageHandler(store)))
+	usageH := authMiddleware(validTokens, usageHandler(store))
+	mux.Handle("/usage", usageH)
+	mux.Handle("/usage/", usageH)
 
 	// All other requests are proxied through.
 	mux.Handle("/", authMiddleware(validTokens, proxy))

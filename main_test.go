@@ -428,15 +428,11 @@ func TestUsageEndpoint_ReturnsJSON(t *testing.T) {
 		t.Errorf("Content-Type: want application/json, got %q", ct)
 	}
 
-	var body map[string]map[string]map[string]map[string]UsageStat
+	var body map[string]map[string]map[string]UsageStat
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode /usage response: %v", err)
 	}
-	usage, ok := body["usage"]
-	if !ok {
-		t.Fatal("response missing 'usage' key")
-	}
-	dateEntry, ok := usage["2026-04-16"]
+	dateEntry, ok := body["2026-04-16"]
 	if !ok {
 		t.Fatal("response missing date key '2026-04-16'")
 	}
@@ -545,6 +541,101 @@ func TestProxyIntegration_UsagePathNotCounted(t *testing.T) {
 	}
 }
 
+func TestUsageEndpoint_FilterByDate(t *testing.T) {
+	store, _, mux := buildTestServer(t, "http://127.0.0.1")
+	store.RecordRequest("2026-04-16", "good-token", "llama3", "2026-04-16T00:00:00Z")
+	store.RecordResponse("2026-04-16", "good-token", "llama3", ollamaUsage{PromptEvalCount: 3, EvalCount: 7})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage/2026-04-16", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusOK)
+
+	var body map[string]map[string]UsageStat
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := body["good-token"]["llama3"]; !ok {
+		t.Fatal("expected good-token/llama3 entry")
+	}
+}
+
+func TestUsageEndpoint_FilterByDateUser(t *testing.T) {
+	store, _, mux := buildTestServer(t, "http://127.0.0.1")
+	store.RecordRequest("2026-04-16", "good-token", "llama3", "2026-04-16T00:00:00Z")
+	store.RecordResponse("2026-04-16", "good-token", "llama3", ollamaUsage{PromptEvalCount: 3, EvalCount: 7})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage/2026-04-16/good-token", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusOK)
+
+	var body map[string]UsageStat
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := body["llama3"]; !ok {
+		t.Fatal("expected llama3 entry")
+	}
+}
+
+func TestUsageEndpoint_FilterByDateUserModel(t *testing.T) {
+	store, _, mux := buildTestServer(t, "http://127.0.0.1")
+	store.RecordRequest("2026-04-16", "good-token", "llama3", "2026-04-16T00:00:00Z")
+	store.RecordResponse("2026-04-16", "good-token", "llama3", ollamaUsage{PromptEvalCount: 3, EvalCount: 7})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage/2026-04-16/good-token/llama3", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusOK)
+
+	var st UsageStat
+	if err := json.NewDecoder(rec.Body).Decode(&st); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if st.RequestCount != 1 || st.EvalCount != 7 {
+		t.Errorf("unexpected stat: %+v", st)
+	}
+}
+
+func TestUsageEndpoint_NotFound_Date(t *testing.T) {
+	_, _, mux := buildTestServer(t, "http://127.0.0.1")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage/1999-01-01", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec)
+}
+
+func TestUsageEndpoint_NotFound_User(t *testing.T) {
+	store, _, mux := buildTestServer(t, "http://127.0.0.1")
+	store.RecordRequest("2026-04-16", "good-token", "llama3", "2026-04-16T00:00:00Z")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage/2026-04-16/ghost", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec)
+}
+
+func TestUsageEndpoint_NotFound_Model(t *testing.T) {
+	store, _, mux := buildTestServer(t, "http://127.0.0.1")
+	store.RecordRequest("2026-04-16", "good-token", "llama3", "2026-04-16T00:00:00Z")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/usage/2026-04-16/good-token/ghost-model", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	mux.ServeHTTP(rec, req)
+	assertStatus(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec)
+}
+
 // --- Helpers ---
 
 func buildTestServer(t *testing.T, backendURL string) (*UsageStore, http.Handler, *http.ServeMux) {
@@ -556,7 +647,9 @@ func buildTestServer(t *testing.T, backendURL string) (*UsageStore, http.Handler
 	store := newUsageStore()
 	proxy := newReverseProxy(target, store)
 	mux := http.NewServeMux()
-	mux.Handle("/usage", authMiddleware(testTokens, usageHandler(store)))
+	usageH := authMiddleware(testTokens, usageHandler(store))
+	mux.Handle("/usage", usageH)
+	mux.Handle("/usage/", usageH)
 	mux.Handle("/", authMiddleware(testTokens, proxy))
 	return store, proxy, mux
 }
@@ -580,4 +673,18 @@ func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+}
+
+func assertJSONError(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type: want application/json, got %q", ct)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode error body: %v", err)
+	}
+	if body["error"] == "" {
+		t.Errorf("expected non-empty 'error' field in body, got %v", body)
+	}
 }

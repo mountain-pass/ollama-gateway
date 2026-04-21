@@ -21,7 +21,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "11434"
 	}
 
 	httpsRaw := strings.ToLower(os.Getenv("HTTPS"))

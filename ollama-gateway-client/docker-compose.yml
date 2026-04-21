@@ -7,5 +7,5 @@ services:
     ports:
       - "11434:11434"
     environment:
-      - TARGET=https://202.137.172.189:11434
+      - TARGET=https://ubuntu:11434
       - APIKEY=nick

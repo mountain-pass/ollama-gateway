@@ -11,7 +11,7 @@
 2. **Create `main.go`** — entry point that:
    - Reads and validates `OLLAMA_BASE_URL` and `API_TOKENS` env vars; calls `log.Fatal` with a clear message if either is absent.
    - Parses `API_TOKENS` into a `map[string]struct{}` for O(1) lookup.
-   - Reads optional `PORT` env var (default `"8080"`).
+   - Reads optional `PORT` env var (default `"11434"`).
    - Constructs the usage store, proxy handler, and HTTP mux.
    - Calls `http.ListenAndServe`.
 

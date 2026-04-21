@@ -39,7 +39,7 @@ There is a need for a lightweight authenticated HTTP proxy that sits in front of
 - Thread-safe in-memory counters (mutex-protected `map[string]map[string]*UsageStat` where outer key is ISO date `YYYY-MM-DD` and inner key is API token).
 - Each `UsageStat` entry tracks: `requests`, `prompt_tokens`, `completion_tokens`, `total_tokens`.
 - Request count is incremented once per proxied request (regardless of whether the response contains usage fields).
-- Service should start on port `8080` by default; optionally configurable via `PORT` env var.
+- Service should start on port `11434` by default; optionally configurable via `PORT` env var.
 
 ## Acceptance Criteria
 

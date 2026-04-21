@@ -48,7 +48,7 @@ Client
 |---|---|---|---|
 | `OLLAMA_BASE_URL` | Yes | — | Base URL of the Ollama backend (e.g. `http://localhost:11434`) |
 | `API_TOKENS` | Yes | — | Comma-separated list of valid Bearer tokens (e.g. `token-a,token-b`) |
-| `PORT` | No | `8080` | Port the gateway listens on |
+| `PORT` | No | `11434` | Port the gateway listens on |
 | `HTTPS` | No | `false` | Set to `true` to enable TLS on the client-facing listener. Must be `true` or `false`; any other value is a fatal error. |
 | `HTTPS_CERTIFICATE` | When `HTTPS=true` | `/app/cert.pem` | Path to the PEM certificate file. The file must exist when `HTTPS=true`. |
 | `HTTPS_PRIVATE_KEY` | When `HTTPS=true` | `/app/key.pem` | Path to the PEM private key file. The file must exist when `HTTPS=true`. |
@@ -66,32 +66,32 @@ CGO_ENABLED=0 go build -o ollama-gateway .
 ```bash
 export OLLAMA_BASE_URL=http://localhost:11434
 export API_TOKENS=my-secret-token,another-token
-export PORT=8080          # optional
+export PORT=11434          # optional
 
 ./ollama-gateway
-# ollama-gateway listening on :8080, proxying to http://localhost:11434
+# ollama-gateway listening on :11434, proxying to http://localhost:11434
 ```
 
 **Use it exactly like the Ollama API** — just add the `Authorization` header:
 ```bash
 # List models
-curl http://localhost:8080/api/tags \
+curl https://localhost:11434/api/tags \
   -H "Authorization: Bearer my-secret-token"
 
 # Generate (non-streaming)
-curl http://localhost:8080/api/generate \
+curl https://localhost:11434/api/generate \
   -H "Authorization: Bearer my-secret-token" \
   -d '{"model":"llama3","prompt":"Why is the sky blue?","stream":false}'
 
 # Generate (streaming)
-curl http://localhost:8080/api/generate \
+curl https://localhost:11434/api/generate \
   -H "Authorization: Bearer my-secret-token" \
   -d '{"model":"llama3","prompt":"Why is the sky blue?"}'
 ```
 
 **Without a valid token — 401:**
 ```bash
-curl -i http://localhost:8080/api/tags
+curl -i https://localhost:11434/api/tags
 # HTTP/1.1 401 Unauthorized
 ```
 
@@ -100,7 +100,7 @@ curl -i http://localhost:8080/api/tags
 `GET /usage` returns a JSON snapshot of accumulated token usage, grouped by date then token. The same authentication requirement applies.
 
 ```bash
-curl http://localhost:8080/usage \
+curl https://localhost:11434/usage \
   -H "Authorization: Bearer my-secret-token"
 ```
 
@@ -142,16 +142,21 @@ More details here - [https://docs.ollama.com/api/usage](https://docs.ollama.com/
 
 You will need to provide an API key to access the gateway. Here are some sample curl commands:
 
+### Fetch usage
 ```
-# fetch usage
-curl -ks https://localhost:8080/usage \
-  -H "Authorization: Bearer abcdefghij" \
-  -H "Content-Type: application/json" | jq
+curl -k https://localhost:11434/usage
+```
 
-# perform a request
-curl -ks https://localhost:8080/api/generate \
-  -H "Authorization: Bearer abcdefghij" \
-  -H "Content-Type: application/json" \
+### Fetch usage with filters (date, apikey, model)
+```
+curl -k https://localhost:11434/usage/2026-04-21/
+curl -k https://localhost:11434/usage/2026-04-21/abcdefghij/
+curl -k https://localhost:11434/usage/2026-04-21/abcdefghij/qwen3.5:0.8b
+```
+
+### Perform a request
+```
+curl -k https://localhost:11434/api/generate \
   -d '{
     "model": "qwen3.5:0.8b",
     "prompt": "What is 1 + 4?",
@@ -161,7 +166,7 @@ curl -ks https://localhost:8080/api/generate \
 
 ## Client Image
 
-`mountainpass/ollama-gateway-client` is a lightweight nginx-based Docker image that acts as a local proxy to a remote ollama-gateway server. It automatically injects the required API key on every request, so local tools (e.g. Ollama clients, Open WebUI) can talk to the gateway without needing to know about authentication.
+`mountainpass/ollama-gateway-client` is a lightweight nginx-based Docker image that acts as a local proxy to a remote ollama-gateway server. It automatically injects the required API key on every request, so local tools (e.g. Ollama clients, Open WebUI) can talk to the gateway without needing to know about authentication, or accepting self signed certificates.
 
 ### Environment Variables
 

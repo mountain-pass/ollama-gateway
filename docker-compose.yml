@@ -34,7 +34,7 @@ services:
     image: mountainpass/ollama-gateway
     container_name: ollama-gateway
     ports:
-      - "8080:8080"
+      - "11434:11434"
     volumes:
       - ./certs/privkey.pem:/app/key.pem:ro
       - ./certs/fullchain.pem:/app/cert.pem:ro
